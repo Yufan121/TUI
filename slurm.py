@@ -28,6 +28,7 @@ class Slurm:
             self.jobs[line.split()[0]] = line
         return self.jobs
         
+        
     def get_jobs_using_dir(self, dir):
         jobs = []
         for job in self.jobs:
