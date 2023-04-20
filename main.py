@@ -206,24 +206,7 @@ def file_browser(stdscr):
 
 
 if __name__ == "__main__":
-    # thread list
-    threads = []
-    stop_event = threading.Event()
-    
-    # Initialize fileManager
-    fman = fileManager.FileManager()
-    
-    
-    # Initialize slurm
-    slurm = slurm.Slurm()
-    threads.append(threading.Thread(target=slurm.update_jobs_periodically, args=(None, None, stop_event)))
-    threads.append(threading.Thread(target=slurm.update_jobs_by_dir_periodically, args=(None, None, stop_event)))
 
-    # start all threads
-    for t in threads:
-        t.start()
-    #
-    
     
     figlet_installed = False
     try:
@@ -244,6 +227,26 @@ if __name__ == "__main__":
         print('slurm is not installed')
         sbatch_installed = False
         
+        
+    # thread list
+    threads = []
+    stop_event = threading.Event()
+    
+    # Initialize fileManager
+    fman = fileManager.FileManager()
+    
+    
+    # Initialize slurm
+    slurm = slurm.Slurm()
+    threads.append(threading.Thread(target=slurm.update_jobs_periodically, args=(None, None, stop_event)))
+    threads.append(threading.Thread(target=slurm.update_jobs_by_dir_periodically, args=(None, None, stop_event)))
+
+    # start all threads
+    for t in threads:
+        t.start()
+    #
+        
+    
     # start curses 
     curses.wrapper(file_browser)
 
