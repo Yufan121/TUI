@@ -18,7 +18,7 @@ A TUI-based file browser
 
 
 
-def get_dir_info(dir_path, result, stop_event):
+def get_dir_info(dir_path, result, stop_event, threads):
     num_files = 0
     total_size = 0
     for dirpath, dirnames, filenames in os.walk(dir_path):
@@ -29,8 +29,10 @@ def get_dir_info(dir_path, result, stop_event):
             if os.path.isfile(file_path):
                 num_files += 1
                 total_size += os.path.getsize(file_path)
+    
     result[dir_path] = (num_files, total_size)
-
+    # remove itself from the thread manager
+    del threads[dir_path]
 
 def get_color(size): # returns the color pair number
     if size < 1024:
@@ -71,7 +73,7 @@ def file_browser(stdscr):
 
     cursor_pos = 0
     dir_info = {} # stores the directory sizes, no locks present so be careful
-    threads = []
+    threads = {}
     stop_event = threading.Event()
 
     
@@ -131,10 +133,15 @@ def file_browser(stdscr):
                         stdscr.addstr(i + 2, screen_width - 2 - len(info_str), info_str, curses.color_pair(get_color(total_size)))                        
                     else: # calculate in a separate thread
                         stdscr.addstr(i + 2, 0, "{} ".format(f))
-                        dir_info[file_path]=''
-                        t = threading.Thread(target=get_dir_info, args=(file_path, dir_info, stop_event))
-                        t.start()
-                        threads.append(t)
+                        # start the thread if total number of threads is less than 10
+                        if len(threads) < 10:
+                            dir_info[file_path]='' # we have file_path as unique identifier, so no more in the dict value
+                            t = threading.Thread(target=get_dir_info, args=(file_path,  dir_info, stop_event, threads))
+                            threads[file_path] = t
+                            t.start()
+                        else: # if there are already 10 threads, display "pending"
+                            stdscr.addstr(i + 2, screen_width - 2 - 10, "pending...")
+
                 else:
                     stdscr.addstr(i + 2, 0, f)
                 if i == cursor_pos:
@@ -166,7 +173,7 @@ def file_browser(stdscr):
             if os.path.isdir(new_dir):
                 # Set the stop event and wait for all threads to finish
                 stop_event.set() # set the stop event
-                for t in threads:
+                for t in threads.values():
                     t.join()
                 # Reset the stop event and clear the threads and dir_info lists
                 stop_event.clear()
@@ -246,8 +253,9 @@ if __name__ == "__main__":
     
     # Initialize slurm
     slurm = slurm.Slurm()
-    threads.append(threading.Thread(target=slurm.update_jobs_periodically, args=(None, None, stop_event)))
-    threads.append(threading.Thread(target=slurm.update_jobs_by_dir_periodically, args=(None, None, stop_event)))
+    if slurm_installed:
+        threads.append(threading.Thread(target=slurm.update_jobs_periodically, args=(None, None, stop_event)))
+        threads.append(threading.Thread(target=slurm.update_jobs_by_dir_periodically, args=(None, None, stop_event)))
 
     # start all threads
     for t in threads:
