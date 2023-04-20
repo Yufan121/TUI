@@ -5,7 +5,7 @@ Slurm job management tool
 """
 
 import subprocess
-
+import time
 
 # Class: Slurm, stores information about a list of my slurm jobs
 # features: 
@@ -16,10 +16,10 @@ import subprocess
 
 class Slurm:
 
-    def __init__(self, jobs):
+    def __init__(self):
         self.jobs = {}
-        
-        
+        self.current_dir = ""
+        self.jobs_in_current_dir = []
 
     def get_my_jobs(self):
         p = subprocess.Popen(["squeue", "--me", '-o%.7i %.11b %.16R %.30j %.2t %.10M %.6D %.3C %.8Q %Z'], stdout=subprocess.PIPE)
@@ -29,9 +29,28 @@ class Slurm:
         return self.jobs
         
         
-    def get_jobs_using_dir(self, dir):
+    def get_jobs_using_dir(self):
         jobs = []
-        for job in self.jobs:
-            if dir in job:
+        for job in self.jobs.values():
+            if self.current_dir in job:
                 jobs.append(job)
-        return jobs
+        # update jobs_in_current_dir; may be slow
+        self.jobs_in_current_dir = jobs
+        return 
+    
+    def update_jobs_periodically(self, interval=1, stop_event=None):
+        # update jobs every one second
+        while True:
+            self.get_my_jobs()
+            time.sleep(interval)
+            if stop_event.is_set():
+                break
+            
+    def update_jobs_by_dir_periodically(self, interval=2, stop_event=None):
+        # update jobs every one second
+        while True:
+            self.get_jobs_using_dir()
+            time.sleep(interval)
+            if stop_event.is_set():
+                break
+        

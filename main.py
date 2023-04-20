@@ -4,7 +4,8 @@ import time
 import threading
 import subprocess
 
-
+import slurm
+import fileManager
 
 '''
 A TUI-based file browser
@@ -64,7 +65,8 @@ def get_slurm_jobs(current_dir): # get slurm jobs with working directory same as
 def file_browser(stdscr):
     current_dir = os.getcwd()
     curses.curs_set(0)
-    stdscr.nodelay(1)
+    # stdscr.nodelay(1)
+    # stdscr.halfdelay()
     stdscr.timeout(100)
 
     cursor_pos = 0
@@ -72,6 +74,7 @@ def file_browser(stdscr):
     threads = []
     stop_event = threading.Event()
 
+    
     # get custom color pairs of 4 different levels of green 
     curses.init_color(1, 800, 800, 800)
     curses.init_color(2, 400, 800, 400)
@@ -85,6 +88,9 @@ def file_browser(stdscr):
     curses.init_pair(4, curses.COLOR_RED, curses.COLOR_BLACK)
     
     while True:
+        # update slurm.current_dir
+        slurm.current_dir = current_dir
+        
         # erase the screen 
         stdscr.erase()
         
@@ -94,7 +100,7 @@ def file_browser(stdscr):
         # Display the files in the current directory
         files = os.listdir(current_dir)
         files.insert(0, "..")
-        
+        files.sort()
         # get screen width and height in unit of characters
         screen_height, screen_width = stdscr.getmaxyx()
         # curses.mousemask(curses.ALL_MOUSE_EVENTS)
@@ -102,41 +108,47 @@ def file_browser(stdscr):
         # Display the files
         for i, f in enumerate(files):
             file_path = os.path.join(current_dir, f)
-            if os.path.isfile(file_path):
-                file_info = os.stat(file_path)
-                file_size = file_info.st_size
-                file_mtime = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(file_info.st_mtime))
-                stdscr.addstr(i + 2, 0, "{} ".format(f))
-                
-                # Display file size and last modified time
-                info_str = "({}, last modified {})".format(format_size(file_size), file_mtime)
-                stdscr.addstr(i + 2, screen_width - 2 - len(info_str), info_str, curses.color_pair(get_color(file_size)))
-            elif os.path.isdir(file_path):
-                if file_path in dir_info: # already calculated, just display
-                    num_files, total_size = dir_info[file_path]
-                    stdscr.addstr(i + 2, 0, "{} ".format(f))
+            if i + 2 < screen_height and files[i] != "..":
+                if os.path.isfile(file_path):
+                    file_info = os.stat(file_path)
+                    file_size = file_info.st_size
+                    file_mtime = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(file_info.st_mtime))
+                    stdscr.addstr(i + 2, 0, "{} ".format(f)) 
                     
-                    # Display number of files and total size
-                    info_str = "({} files, {})".format(num_files, format_size(total_size))
-                    stdscr.addstr(i + 2, screen_width - 2 - len(info_str), info_str, curses.color_pair(get_color(total_size)))
-                else: # calculate in a separate thread
-                    stdscr.addstr(i + 2, screen_width - 2 - len(f), f)
-                    t = threading.Thread(target=get_dir_info, args=(file_path, dir_info, stop_event))
-                    t.start()
-                    threads.append(t)
-            else:
-                stdscr.addstr(i + 2, 0, f)
-            if i == cursor_pos:
-                stdscr.addstr(i + 2, 0, f, curses.A_REVERSE)
+                    # Display file size and last modified time
+                    info_str = "({}, last modified {})".format(format_size(file_size), file_mtime)
+                    stdscr.addstr(i + 2, screen_width - 2 - len(info_str), info_str, curses.color_pair(get_color(file_size)))
+                elif os.path.isdir(file_path):
+                    if file_path in dir_info: # already calculated, just display
+                        num_files, total_size = dir_info[file_path]
+                        stdscr.addstr(i + 2, 0, "{} ".format(f))
+                        
+                        # Display number of files and total size
+                        info_str = "({} files, {})".format(num_files, format_size(total_size))
+                        stdscr.addstr(i + 2, screen_width - 2 - len(info_str), info_str, curses.color_pair(get_color(total_size)))
+                    else: # calculate in a separate thread
+                        stdscr.addstr(i + 2, screen_width - 2 - len(f), f)
+                        t = threading.Thread(target=get_dir_info, args=(file_path, dir_info, stop_event))
+                        t.start()
+                        threads.append(t)
+                else:
+                    stdscr.addstr(i + 2, 0, f)
+                if i == cursor_pos:
+                    stdscr.addstr(i + 2, 0, f, curses.A_REVERSE)
 
 
-
-        # get_slurm_jobs(current_dir)
+        
+        # get slurm jobs by directory
+        jobs = slurm.jobs_in_current_dir
+    
         # Display slurm jobs
-        # for i, f in enumerate(files):
-
+        stdscr.addstr(screen_height - 11, 0, "Slurm jobs:")
+        for i, job in enumerate(jobs):
+            stdscr.addstr(screen_height - 10 + i, 0, job) if i < 8 else stdscr.addstr(screen_height - 2, 0, "...")
+            
+                        
         # Catch user input 
-        c = stdscr.getch()
+        c = stdscr.getch() # 
         # quit, up, down, enter
         if c == ord('q'): # quit
             break
@@ -177,7 +189,7 @@ def file_browser(stdscr):
                             stdscr.addstr(screen_height // 2, 0, output)
                         stdscr.addstr(screen_height - 1, 0, "Submitted job for {}".format(new_dir))
                         stdscr.refresh()
-                        time.sleep(5)
+                        time.sleep(2)
                         break
                     elif c == ord('n'):
                         # don't submit job, print message in big text and wait for 1 second
@@ -187,12 +199,32 @@ def file_browser(stdscr):
                         stdscr.addstr(screen_height - 1, 0, "Okay, not submitting job for {}".format(new_dir))
                         # stdscr.addstr(screen_height - 1, 0, "Okay, not submitting job for {}".format(new_dir))
                         stdscr.refresh()
-                        time.sleep(5)
+                        time.sleep(2)
                         break
                 # clear screen
                 stdscr.clear()
 
+
 if __name__ == "__main__":
+    # thread list
+    threads = []
+    stop_event = threading.Event()
+    
+    # Initialize fileManager
+    fman = fileManager.FileManager()
+    
+    
+    # Initialize slurm
+    slurm = slurm.Slurm()
+    threads.append(threading.Thread(target=slurm.update_jobs_periodically, args=(None, None, stop_event)))
+    threads.append(threading.Thread(target=slurm.update_jobs_by_dir_periodically, args=(None, None, stop_event)))
+
+    # start all threads
+    for t in threads:
+        t.start()
+    #
+    
+    
     figlet_installed = False
     try:
         subprocess.check_output(['which', 'figlet'])
@@ -211,7 +243,14 @@ if __name__ == "__main__":
     except subprocess.CalledProcessError:
         print('slurm is not installed')
         sbatch_installed = False
+        
+    # start curses 
     curses.wrapper(file_browser)
 
-
-
+    
+    # set stop event
+    stop_event.set()
+    
+    # terminate all threads
+    for t in threads:
+        t.join()
