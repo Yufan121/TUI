@@ -70,7 +70,7 @@ def file_browser(stdscr):
     stdscr.timeout(100)
 
     cursor_pos = 0
-    dir_info = {}
+    dir_info = {} # stores the directory sizes, no locks present so be careful
     threads = []
     stop_event = threading.Event()
 
@@ -119,15 +119,19 @@ def file_browser(stdscr):
                     info_str = "({}, last modified {})".format(format_size(file_size), file_mtime)
                     stdscr.addstr(i + 2, screen_width - 2 - len(info_str), info_str, curses.color_pair(get_color(file_size)))
                 elif os.path.isdir(file_path):
-                    if file_path in dir_info: # already calculated, just display
+                    if file_path in dir_info and dir_info[file_path] == '': # calculating
+                        stdscr.addstr(i + 2, 0, "{} ".format(f))
+                        stdscr.addstr(i + 2, screen_width - 2 - 10, "calculating...")
+                    elif file_path in dir_info: # already calculated, just display
                         num_files, total_size = dir_info[file_path]
                         stdscr.addstr(i + 2, 0, "{} ".format(f))
                         
                         # Display number of files and total size
                         info_str = "({} files, {})".format(num_files, format_size(total_size))
-                        stdscr.addstr(i + 2, screen_width - 2 - len(info_str), info_str, curses.color_pair(get_color(total_size)))
+                        stdscr.addstr(i + 2, screen_width - 2 - len(info_str), info_str, curses.color_pair(get_color(total_size)))                        
                     else: # calculate in a separate thread
-                        stdscr.addstr(i + 2, screen_width - 2 - len(f), f)
+                        stdscr.addstr(i + 2, 0, "{} ".format(f))
+                        dir_info[file_path]=''
                         t = threading.Thread(target=get_dir_info, args=(file_path, dir_info, stop_event))
                         t.start()
                         threads.append(t)
@@ -181,12 +185,16 @@ def file_browser(stdscr):
                     c = stdscr.getch()
                     if c == ord('y'):
                         # submit job
-                        if sbatch_installed:
+                        if slurm_installed:
                             subprocess.call(['sbatch', new_dir])
                         if figlet_installed:
                             # Run command and capture output
                             output = subprocess.check_output(['figlet', 'SUBMITTED']).decode('utf-8')
                             stdscr.addstr(screen_height // 2, 0, output)
+                        if slurm_installed:
+                            slurm.submit_job( new_dir )
+                        else: # promt user to install slurm
+                            stdscr.addstr(screen_height - 1, 0, "Please install slurm to submit jobs") # TODO: not showing up for whatever reason
                         stdscr.addstr(screen_height - 1, 0, "Submitted job for {}".format(new_dir))
                         stdscr.refresh()
                         time.sleep(2)
@@ -206,6 +214,28 @@ def file_browser(stdscr):
 
 
 if __name__ == "__main__":
+
+    
+    figlet_installed = False
+    try:
+        subprocess.check_output(['which', 'figlet'])
+        print('figlet is installed')
+        figlet_installed = True
+    except subprocess.CalledProcessError:
+        print('figlet is not installed')
+        figlet_installed = False
+
+    # check if slurm is installed
+    slurm_installed = False
+    try:
+        subprocess.check_output(['which', 'sbatch'])
+        print('slurm is installed') 
+        slurm_installed = True
+    except subprocess.CalledProcessError:
+        print('slurm is not installed')
+        slurm_installed = False
+        
+        
     # thread list
     threads = []
     stop_event = threading.Event()
@@ -223,27 +253,8 @@ if __name__ == "__main__":
     for t in threads:
         t.start()
     #
-    
-    
-    figlet_installed = False
-    try:
-        subprocess.check_output(['which', 'figlet'])
-        print('figlet is installed')
-        figlet_installed = True
-    except subprocess.CalledProcessError:
-        print('figlet is not installed')
-        figlet_installed = False
-
-    # check if slurm is installed
-    sbatch_installed = False
-    try:
-        subprocess.check_output(['which', 'sbatch'])
-        print('slurm is installed') 
-        sbatch_installed = True
-    except subprocess.CalledProcessError:
-        print('slurm is not installed')
-        sbatch_installed = False
         
+    
     # start curses 
     curses.wrapper(file_browser)
 
