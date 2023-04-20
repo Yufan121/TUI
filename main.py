@@ -131,7 +131,7 @@ def file_browser(stdscr):
 
 
 
-        # get_slurm_jobs(current_dir)
+        get_slurm_jobs(current_dir)
         # Display slurm jobs
         # for i, f in enumerate(files):
 

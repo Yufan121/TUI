@@ -35,3 +35,11 @@ class Slurm:
             if dir in job:
                 jobs.append(job)
         return jobs
+    
+    def submit_job(self, job_script, job_name=None):
+        # if job_name is not specified, dont use the -J flag
+        if job_name is None:
+            p = subprocess.Popen(["sbatch", job_script], stdout=subprocess.PIPE)
+        elif job_name is not None:
+            p = subprocess.Popen(["sbatch", "-J", job_name, job_script], stdout=subprocess.PIPE)
+        return 0
